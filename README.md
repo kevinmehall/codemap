@@ -2,6 +2,8 @@
 
 **[Documentation](https://docs.rs/codemap)**
 
+[![Build Status](https://travis-ci.org/kevinmehall/codemap.svg?branch=master)](https://travis-ci.org/kevinmehall/codemap)
+
 A data structure for tracking source positions in language implementations, inspired by the
 [CodeMap type in rustc's libsyntax](https://github.com/rust-lang/rust/blob/master/src/libsyntax/codemap.rs).
 

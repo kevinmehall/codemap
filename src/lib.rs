@@ -260,9 +260,6 @@ pub struct LineCol {
 }
 
 /// A file, and a line and column within it.
-///
-/// The `Display` implementation formats the position as `filename:line:column`, with a 1-indexed
-/// line and column.
 #[derive(Clone)]
 pub struct Loc<'a> {
     pub file: &'a File,
@@ -270,16 +267,14 @@ pub struct Loc<'a> {
 }
 
 impl<'a> fmt::Display for Loc<'a> {
+    /// Formats the location as `filename:line:column`, with a 1-indexed
+    /// line and column.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "{}:{}:{}", self.file.name, self.position.line+1, self.position.column+1)
     }
 }
 
 /// A file, and a line and column range within it.
-///
-/// The `Display` implementation formats the span as
-/// `filename:start_line:start_column: end_line:end_column`, or if the span is zero-length,
-/// `filename:line:column`, with a 1-indexed line and column.
 #[derive(Clone)]
 pub struct SpanLoc<'a> {
     pub file: &'a File,
@@ -288,6 +283,8 @@ pub struct SpanLoc<'a> {
 }
 
 impl<'a> fmt::Display for SpanLoc<'a> {
+    /// Formats the span as `filename:start_line:start_column: end_line:end_column`,
+    /// or if the span is zero-length, `filename:line:column`, with a 1-indexed line and column.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         if self.begin == self.end {
             write!(f, "{}:{}:{}", self.file.name, self.begin.line+1, self.begin.column+1)

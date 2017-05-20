@@ -33,17 +33,17 @@ pub struct Pos(u32);
 
 pub const DUMMY_POS: Pos = Pos(0);
 
-impl Add<u32> for Pos {
+impl Add<u64> for Pos {
     type Output = Pos;
-    fn add(self, other: u32) -> Pos {
-        Pos(self.0 + other)
+    fn add(self, other: u64) -> Pos {
+        Pos(self.0 + other as u32)
     }
 }
 
 impl Sub<Pos> for Pos {
-    type Output = u32;
-    fn sub(self, other: Pos) -> u32 {
-        self.0 - other.0
+    type Output = u64;
+    fn sub(self, other: Pos) -> u64 {
+        (self.0 - other.0) as u64
     }
 }
 
@@ -51,10 +51,10 @@ impl Sub<Pos> for Pos {
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
 pub struct Span {
     /// The position in the codemap representing the first byte of the span.
-    pub low: Pos,
+    low: Pos,
 
     /// The position after the last byte of the span.
-    pub high: Pos,
+    high: Pos,
 }
 
 pub const DUMMY_SP: Span = Span { low: DUMMY_POS, high: DUMMY_POS };
@@ -65,7 +65,7 @@ impl Span {
     /// # Panics
     ///   * If `end < begin`
     ///   * If `end` is beyond the length of the span
-    pub fn subspan(&self, begin: u32, end: u32) -> Span {
+    pub fn subspan(&self, begin: u64, end: u64) -> Span {
         assert!(end >= begin);
         assert!(self.low + end <= self.high);
         Span {
@@ -77,6 +77,21 @@ impl Span {
     /// Checks if a span is contained within this span.
     pub fn contains(&self, other: Span) -> bool {
         self.low <= other.low && self.high >= other.high
+    }
+
+    /// The position in the codemap representing the first byte of the span.
+    pub fn low(&self) -> Pos {
+        self.low
+    }
+
+    /// The position after the last byte of the span.
+    pub fn high(&self) -> Pos {
+        self.high
+    }
+
+    /// The length in bytes of the text of the span
+    pub fn len(&self) -> u64 {
+        self.high - self.low
     }
 }
 
@@ -116,9 +131,9 @@ impl CodeMap {
     /// representing substrings of the file.
     pub fn add_file(&mut self, name: String, source: String) -> Arc<File> {
         let low = self.end_pos() + 1;
-        let high = low + source.len() as u32;
+        let high = low + source.len() as u64;
         let mut lines = vec![low];
-        lines.extend(source.match_indices('\n').map(|(p, _)| { low + (p + 1) as u32 }));
+        lines.extend(source.match_indices('\n').map(|(p, _)| { low + (p + 1) as u64 }));
 
         let file = Arc::new(File {
             span: Span { low: low, high: high },
@@ -303,12 +318,12 @@ fn test_codemap() {
     let x = f1.span.subspan(5, 10);
     let f = codemap.find_file(x.low);
     assert_eq!(f.name, "test1.rs");
-    assert_eq!(f.find_line_col(f.span.low), LineCol { line: 0, column: 0 });
-    assert_eq!(f.find_line_col(f.span.low + 4), LineCol { line: 0, column: 4 });
-    assert_eq!(f.find_line_col(f.span.low + 5), LineCol { line: 1, column: 0 });
-    assert_eq!(f.find_line_col(f.span.low + 16), LineCol { line: 2, column: 4 });
+    assert_eq!(f.find_line_col(f.span.low()), LineCol { line: 0, column: 0 });
+    assert_eq!(f.find_line_col(f.span.low() + 4), LineCol { line: 0, column: 4 });
+    assert_eq!(f.find_line_col(f.span.low() + 5), LineCol { line: 1, column: 0 });
+    assert_eq!(f.find_line_col(f.span.low() + 16), LineCol { line: 2, column: 4 });
 
     let x = f2.span.subspan(4, 7);
-    assert_eq!(codemap.find_file(x.low).name, "test2.rs");
-    assert_eq!(codemap.find_file(x.high).name, "test2.rs");
+    assert_eq!(codemap.find_file(x.low()).name, "test2.rs");
+    assert_eq!(codemap.find_file(x.high()).name, "test2.rs");
 }

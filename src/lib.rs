@@ -31,8 +31,6 @@ use std::sync::Arc;
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub struct Pos(u32);
 
-pub const DUMMY_POS: Pos = Pos(0);
-
 impl Add<u64> for Pos {
     type Output = Pos;
     fn add(self, other: u64) -> Pos {
@@ -56,8 +54,6 @@ pub struct Span {
     /// The position after the last byte of the span.
     high: Pos,
 }
-
-pub const DUMMY_SP: Span = Span { low: DUMMY_POS, high: DUMMY_POS };
 
 impl Span {
     /// Makes a span from offsets relative to the start of this span.

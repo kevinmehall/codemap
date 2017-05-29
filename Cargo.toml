@@ -10,5 +10,9 @@ A data structure for efficiently storing source code position and span informati
 (e.g. in a compiler AST), and mapping it back to file/line/column locations for error
 reporting and suggestions.
 """
+readme = "README.md"
 categories = ["data-structures"]
-keywords = ["source", "position", "compiler", "sourcemap"]
+keywords = ["source", "position", "compiler", "sourcemap", "rustc"]
+
+[badges]
+travis-ci = { repository = "kevinmehall/codemap" }

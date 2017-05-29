@@ -15,7 +15,7 @@
 //! let string_literal_span = file.span.subspan(24, 31);
 //!
 //! let location = codemap.look_up_span(string_literal_span);
-//! assert_eq!(location.file.name, "test.rs");
+//! assert_eq!(location.file.name(), "test.rs");
 //! assert_eq!(location.begin.line, 1);
 //! assert_eq!(location.begin.column, 13);
 //! assert_eq!(location.end.line, 1);
@@ -136,7 +136,6 @@ impl CodeMap {
             name: name,
             source: source,
             lines: lines,
-            _allow_priv: (),
         });
 
         self.files.push(file.clone());
@@ -148,7 +147,7 @@ impl CodeMap {
     }
 
     /// Looks up the `File` that contains the specified position.
-    pub fn find_file(&self, pos: Pos) -> &File {
+    pub fn find_file(&self, pos: Pos) -> &Arc<File> {
         self.files.binary_search_by(|file| {
             if file.span.high < pos {
                 Ordering::Less
@@ -164,7 +163,7 @@ impl CodeMap {
     pub fn look_up_pos(&self, pos: Pos) -> Loc {
         let file = self.find_file(pos);
         let position = file.find_line_col(pos);
-        Loc { file, position }
+        Loc { file: file.clone(), position }
     }
 
     /// Gets the file and its line and column ranges represented by a `Span`.
@@ -172,7 +171,7 @@ impl CodeMap {
         let file = self.find_file(span.low);
         let begin = file.find_line_col(span.low);
         let end = file.find_line_col(span.high);
-        SpanLoc { file, begin, end }
+        SpanLoc { file: file.clone(), begin, end }
     }
 }
 
@@ -182,18 +181,21 @@ pub struct File {
     pub span: Span,
 
     /// The filename as it would be displayed in an error message.
-    pub name: String,
+    name: String,
 
     /// Contents of the file.
-    pub source: String,
+    source: String,
 
     /// Byte positions of line beginnings.
-    pub lines: Vec<Pos>,
-
-    _allow_priv: ()
+    lines: Vec<Pos>,
 }
 
 impl File {
+    /// Gets the name of the file
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Gets the line number of a Pos.
     ///
     /// The lines are 0-indexed (first line is numbered 0)
@@ -223,6 +225,11 @@ impl File {
         let col = self.source_slice(line_span)[..byte_col as usize].chars().count();
 
         LineCol{ line: line, column: col }
+    }
+
+    /// Gets the full source text of the file
+    pub fn source(&self) -> &str {
+        &self.source
     }
 
     /// Gets the source text of a Span.
@@ -258,6 +265,11 @@ impl File {
     pub fn source_line(&self, line: usize) -> &str {
         self.source_slice(self.line_span(line))
     }
+
+    /// Gets the number of lines in the file
+    pub fn num_lines(&self) -> usize {
+        self.lines.len()
+    }
 }
 
 /// A line and column.
@@ -272,12 +284,12 @@ pub struct LineCol {
 
 /// A file, and a line and column within it.
 #[derive(Clone)]
-pub struct Loc<'a> {
-    pub file: &'a File,
+pub struct Loc {
+    pub file: Arc<File>,
     pub position: LineCol,
 }
 
-impl<'a> fmt::Display for Loc<'a> {
+impl fmt::Display for Loc {
     /// Formats the location as `filename:line:column`, with a 1-indexed
     /// line and column.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -287,13 +299,13 @@ impl<'a> fmt::Display for Loc<'a> {
 
 /// A file, and a line and column range within it.
 #[derive(Clone)]
-pub struct SpanLoc<'a> {
-    pub file: &'a File,
+pub struct SpanLoc {
+    pub file: Arc<File>,
     pub begin: LineCol,
     pub end: LineCol,
 }
 
-impl<'a> fmt::Display for SpanLoc<'a> {
+impl fmt::Display for SpanLoc {
     /// Formats the span as `filename:start_line:start_column: end_line:end_column`,
     /// or if the span is zero-length, `filename:line:column`, with a 1-indexed line and column.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -311,6 +323,11 @@ fn test_codemap() {
     let f1 = codemap.add_file("test1.rs".to_string(), "abcd\nefghij\nqwerty".to_string());
     let f2 = codemap.add_file("test2.rs".to_string(), "foo\nbar".to_string());
 
+    assert_eq!(codemap.find_file(f1.span.low()).name(), "test1.rs");
+    assert_eq!(codemap.find_file(f1.span.high()).name(), "test1.rs");
+    assert_eq!(codemap.find_file(f2.span.low()).name(), "test2.rs");
+    assert_eq!(codemap.find_file(f2.span.high()).name(), "test2.rs");
+
     let x = f1.span.subspan(5, 10);
     let f = codemap.find_file(x.low);
     assert_eq!(f.name, "test1.rs");
@@ -320,6 +337,6 @@ fn test_codemap() {
     assert_eq!(f.find_line_col(f.span.low() + 16), LineCol { line: 2, column: 4 });
 
     let x = f2.span.subspan(4, 7);
-    assert_eq!(codemap.find_file(x.low()).name, "test2.rs");
-    assert_eq!(codemap.find_file(x.high()).name, "test2.rs");
+    assert_eq!(codemap.find_file(x.low()).name(), "test2.rs");
+    assert_eq!(codemap.find_file(x.high()).name(), "test2.rs");
 }

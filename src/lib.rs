@@ -22,7 +22,7 @@
 //! assert_eq!(location.end.column, 20);
 //! ```
 
-use std::cmp::Ordering;
+use std::cmp::{self, Ordering};
 use std::ops::{Add, Sub, Deref};
 use std::fmt;
 use std::sync::Arc;
@@ -88,6 +88,14 @@ impl Span {
     /// The length in bytes of the text of the span
     pub fn len(&self) -> u64 {
         self.high - self.low
+    }
+
+    /// Create a span that encloses both `self` and `other`.
+    pub fn merge(&self, other: Span) -> Span {
+        Span {
+            low: cmp::min(self.low, other.low),
+            high: cmp::max(self.high, other.high),
+        }
     }
 }
 

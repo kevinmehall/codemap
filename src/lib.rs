@@ -26,6 +26,7 @@ use std::cmp::{self, Ordering};
 use std::ops::{Add, Sub, Deref};
 use std::fmt;
 use std::sync::Arc;
+use std::hash::{Hash, Hasher};
 
 /// A small, `Copy`, value representing a position in a `CodeMap`'s file.
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -283,6 +284,27 @@ impl File {
     }
 }
 
+impl fmt::Debug for File {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "File({:?})", self.name)
+    }
+}
+
+impl PartialEq for File {
+    /// Compares by identity
+    fn eq(&self, other: &File) -> bool {
+        self as *const _ == other as *const _
+    }
+}
+
+impl Eq for File {}
+
+impl Hash for File {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.span.hash(hasher);
+    }
+}
+
 /// A line and column.
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
 pub struct LineCol {
@@ -294,7 +316,7 @@ pub struct LineCol {
 }
 
 /// A file, and a line and column within it.
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Loc {
     pub file: Arc<File>,
     pub position: LineCol,
@@ -309,7 +331,7 @@ impl fmt::Display for Loc {
 }
 
 /// A file, and a line and column range within it.
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct SpanLoc {
     pub file: Arc<File>,
     pub begin: LineCol,
@@ -359,8 +381,8 @@ fn test_issue2() {
     let file = codemap.add_file("<test>".to_owned(), content.to_owned());
 
     let span = file.span.subspan(2, 3);
-    assert_eq!(file.find_line_col(span.low()), LineCol { line: 0, column: 2 });
-    assert_eq!(file.find_line_col(span.high()), LineCol { line: 1, column: 0 });
+    assert_eq!(codemap.look_up_pos(span.low()), Loc { file: file.clone(), position: LineCol { line: 0, column: 2 }});
+    assert_eq!(codemap.look_up_pos(span.high()), Loc { file: file.clone(), position: LineCol { line: 1, column: 0 }});
 
     assert_eq!(file.source_line(0), "a ");
     assert_eq!(file.source_line(1), "xyz");

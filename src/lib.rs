@@ -247,12 +247,13 @@ impl File {
     ///   * If `span` is not entirely within this file.
     pub fn source_slice(&self, span: Span) -> &str {
         assert!(self.span.contains(span));
-        self.source[((span.low - self.span.low) as usize)..((span.high - self.span.low) as usize)].trim_right()
+        &self.source[((span.low - self.span.low) as usize)..((span.high - self.span.low) as usize)]
     }
 
     /// Gets the span representing a line by line number.
     ///
-    /// The line number is 0-indexed (first line is numbered 0)
+    /// The line number is 0-indexed (first line is numbered 0). The returned span includes the
+    /// line terminator.
     ///
     /// # Panics
     ///
@@ -267,11 +268,13 @@ impl File {
 
     /// Gets the source text of a line.
     ///
+    /// The string returned does not include the terminating \r or \n characters.
+    ///
     /// # Panics
     ///
     ///  * If the line number is out of range
     pub fn source_line(&self, line: usize) -> &str {
-        self.source_slice(self.line_span(line))
+        self.source_slice(self.line_span(line)).trim_right_matches(&['\n', '\r'][..])
     }
 
     /// Gets the number of lines in the file
@@ -347,4 +350,19 @@ fn test_codemap() {
     let x = f2.span.subspan(4, 7);
     assert_eq!(codemap.find_file(x.low()).name(), "test2.rs");
     assert_eq!(codemap.find_file(x.high()).name(), "test2.rs");
+}
+
+#[test]
+fn test_issue2() {
+    let mut codemap = CodeMap::new();
+    let content = "a \nxyz\r\n";
+    let file = codemap.add_file("<test>".to_owned(), content.to_owned());
+
+    let span = file.span.subspan(2, 3);
+    assert_eq!(file.find_line_col(span.low()), LineCol { line: 0, column: 2 });
+    assert_eq!(file.find_line_col(span.high()), LineCol { line: 1, column: 0 });
+
+    assert_eq!(file.source_line(0), "a ");
+    assert_eq!(file.source_line(1), "xyz");
+    assert_eq!(file.source_line(2), "");
 }

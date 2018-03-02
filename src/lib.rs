@@ -381,10 +381,24 @@ fn test_issue2() {
     let file = codemap.add_file("<test>".to_owned(), content.to_owned());
 
     let span = file.span.subspan(2, 3);
-    assert_eq!(codemap.look_up_pos(span.low()), Loc { file: file.clone(), position: LineCol { line: 0, column: 2 }});
-    assert_eq!(codemap.look_up_pos(span.high()), Loc { file: file.clone(), position: LineCol { line: 1, column: 0 }});
+    assert_eq!(codemap.look_up_span(span), SpanLoc {
+        file: file.clone(),
+        begin: LineCol { line: 0, column: 2 },
+        end: LineCol { line: 1, column: 0 }
+    });
 
     assert_eq!(file.source_line(0), "a ");
     assert_eq!(file.source_line(1), "xyz");
     assert_eq!(file.source_line(2), "");
+}
+
+#[test]
+fn test_multibyte() {
+    let mut codemap = CodeMap::new();
+    let content = "65°00′N 18°00′W 汉语\n🔬";
+    let file = codemap.add_file("<test>".to_owned(), content.to_owned());
+
+    assert_eq!(codemap.look_up_pos(file.span.low() + 21), Loc { file: file.clone(), position: LineCol { line: 0, column: 15 } });
+    assert_eq!(codemap.look_up_pos(file.span.low() + 28), Loc { file: file.clone(), position: LineCol { line: 0, column: 18 } });
+    assert_eq!(codemap.look_up_pos(file.span.low() + 33), Loc { file: file.clone(), position: LineCol { line: 1, column: 1 } });
 }

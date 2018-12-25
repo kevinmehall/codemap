@@ -1,16 +1,13 @@
-//! A data structure for tracking source positions in language implementations, inspired by the
-//! [CodeMap type in rustc's libsyntax](https://github.com/rust-lang/rust/blob/master/src/libsyntax/codemap.rs).
+//! Variable-size versions of the 32-bit based CodeMap data structures. 
 //!
-//! The `CodeMap` tracks all source files and maps positions within them to linear indexes as if all
-//! source files were concatenated. This allows a source position to be represented by a small
-//! 32-bit `Pos` indexing into the `CodeMap`, under the assumption that the total amount of parsed
-//! source code will not exceed 4GiB. The `CodeMap` can look up the source file, line, and column
-//! of a `Pos` or `Span`, as well as provide source code snippets for error reporting.
-//!
+//! The basic `CodeMap` fits all positions into 32 bits, but gives the limitation that the total
+//! amount of parsed source code not exceed 4GiB. It is possible to exceed this bound on some
+//! systems with enough memory, so it is desirable to sometimes trade a larger positional
+//! representation for more possible indexes - using `u64`, or possibly `usize`.
 //! # Example
 //! ```
-//! use codemap::CodeMap;
-//! let mut codemap = CodeMap::new();
+//! use codemap::generic::CodeMap;
+//! let mut codemap : CodeMap<usize> = CodeMap::new();
 //! let file = codemap.add_file("test.rs".to_string(), "fn test(){\n    println!(\"Hello\");\n}\n".to_string());
 //! let string_literal_span = file.span.subspan(24, 31);
 //!
@@ -22,52 +19,54 @@
 //! assert_eq!(location.end.column, 20);
 //! ```
 
-#[cfg(feature = "generic")]
-extern crate num_traits;
-#[cfg(feature = "generic")]
-pub mod generic;
-
 use std::cmp::{self, Ordering};
 use std::ops::{Add, Sub, Deref};
 use std::fmt;
 use std::sync::Arc;
 use std::hash::{Hash, Hasher};
 
-/// A small, `Copy`, value representing a position in a `CodeMap`'s file.
-#[derive(Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
-pub struct Pos(u32);
+use num_traits::{Zero, One};
 
-impl Add<u64> for Pos {
-    type Output = Pos;
-    fn add(self, other: u64) -> Pos {
-        Pos(self.0 + other as u32)
+/// A short-hand for the requirements of a value representing a position
+pub trait Positional : Zero + One + Add<Self, Output=Self> + Sub<Self, Output=Self> + From<usize> + Into<usize> + Copy + Hash + Eq + Ord + fmt::Debug {}
+
+impl<P: Zero + One + Copy + Add<P, Output=P> + Sub<P, Output=P> + From<usize> + Into<usize> + Hash + Eq + Ord + fmt::Debug> Positional for P {}
+
+/// A generic value representing a position in a `CodeMap`'s file.
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub struct Pos<P: Positional>(P);
+
+impl<P: Positional> Add<P> for Pos<P> {
+    type Output = Pos<P>;
+    fn add(self, other: P) -> Pos<P> {
+        Pos(self.0 + other)
     }
 }
 
-impl Sub<Pos> for Pos {
-    type Output = u64;
-    fn sub(self, other: Pos) -> u64 {
-        (self.0 - other.0) as u64
+impl<P: Positional> Sub<Pos<P>> for Pos<P> {
+    type Output = P;
+    fn sub(self, other: Pos<P>) -> P {
+        (self.0 - other.0)
     }
 }
 
 /// A range of text within a CodeMap.
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
-pub struct Span {
+pub struct Span<P: Positional> {
     /// The position in the codemap representing the first byte of the span.
-    low: Pos,
+    low: Pos<P>,
 
     /// The position after the last byte of the span.
-    high: Pos,
+    high: Pos<P>,
 }
 
-impl Span {
+impl<P: Positional> Span<P> {
     /// Makes a span from offsets relative to the start of this span.
     ///
     /// # Panics
     ///   * If `end < begin`
     ///   * If `end` is beyond the length of the span
-    pub fn subspan(&self, begin: u64, end: u64) -> Span {
+    pub fn subspan(&self, begin: P, end: P) -> Span<P> {
         assert!(end >= begin);
         assert!(self.low + end <= self.high);
         Span {
@@ -77,27 +76,27 @@ impl Span {
     }
 
     /// Checks if a span is contained within this span.
-    pub fn contains(&self, other: Span) -> bool {
+    pub fn contains(&self, other: Span<P>) -> bool {
         self.low <= other.low && self.high >= other.high
     }
 
     /// The position in the codemap representing the first byte of the span.
-    pub fn low(&self) -> Pos {
+    pub fn low(&self) -> Pos<P> {
         self.low
     }
 
     /// The position after the last byte of the span.
-    pub fn high(&self) -> Pos {
+    pub fn high(&self) -> Pos<P> {
         self.high
     }
 
     /// The length in bytes of the text of the span
-    pub fn len(&self) -> u64 {
+    pub fn len(&self) -> P {
         self.high - self.low
     }
 
     /// Create a span that encloses both `self` and `other`.
-    pub fn merge(&self, other: Span) -> Span {
+    pub fn merge(&self, other: Span<P>) -> Span<P> {
         Span {
             low: cmp::min(self.low, other.low),
             high: cmp::max(self.high, other.high),
@@ -107,12 +106,12 @@ impl Span {
 
 /// Associate a Span with a value of arbitrary type (e.g. an AST node).
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
-pub struct Spanned<T> {
+pub struct Spanned<T, P: Positional> {
     pub node: T,
-    pub span: Span,
+    pub span: Span<P>,
 }
 
-impl<T> Deref for Spanned<T> {
+impl<T, P: Positional> Deref for Spanned<T, P> {
     type Target = T;
 
     fn deref(&self) -> &T {
@@ -121,14 +120,14 @@ impl<T> Deref for Spanned<T> {
 }
 
 /// A data structure recording source code files for position lookup.
-pub struct CodeMap {
-    files: Vec<Arc<File>>,
+pub struct CodeMap<P: Positional> {
+    files: Vec<Arc<File<P>>>,
     _allow_priv: ()
 }
 
-impl CodeMap {
+impl<P: Positional> CodeMap<P> {
     /// Creates an empty `CodeMap`.
-    pub fn new() -> CodeMap {
+    pub fn new() -> CodeMap<P> {
         CodeMap {
             files: vec![],
             _allow_priv: ()
@@ -139,11 +138,11 @@ impl CodeMap {
     ///
     /// Use the returned `File` and its `.span` property to create `Spans`
     /// representing substrings of the file.
-    pub fn add_file(&mut self, name: String, source: String) -> Arc<File> {
-        let low = self.end_pos() + 1;
-        let high = low + source.len() as u64;
+    pub fn add_file(&mut self, name: String, source: String) -> Arc<File<P>> {
+        let low = self.end_pos() + P::one();
+        let high = low + P::from(source.len());
         let mut lines = vec![low];
-        lines.extend(source.match_indices('\n').map(|(p, _)| { low + (p + 1) as u64 }));
+        lines.extend(source.match_indices('\n').map(|(p, _)| { low + P::from(p) + P::one() }));
 
         let file = Arc::new(File {
             span: Span { low: low, high: high },
@@ -156,12 +155,12 @@ impl CodeMap {
         file
     }
 
-    fn end_pos(&self) -> Pos {
-        self.files.last().map(|x| x.span.high).unwrap_or(Pos(0))
+    fn end_pos(&self) -> Pos<P> {
+        self.files.last().map(|x| x.span.high).unwrap_or(Pos(P::zero()))
     }
 
     /// Looks up the `File` that contains the specified position.
-    pub fn find_file(&self, pos: Pos) -> &Arc<File> {
+    pub fn find_file(&self, pos: Pos<P>) -> &Arc<File<P>> {
         self.files.binary_search_by(|file| {
             if file.span.high < pos {
                 Ordering::Less
@@ -174,14 +173,14 @@ impl CodeMap {
     }
 
     /// Gets the file, line, and column represented by a `Pos`.
-    pub fn look_up_pos(&self, pos: Pos) -> Loc {
+    pub fn look_up_pos(&self, pos: Pos<P>) -> Loc<P> {
         let file = self.find_file(pos);
         let position = file.find_line_col(pos);
         Loc { file: file.clone(), position }
     }
 
     /// Gets the file and its line and column ranges represented by a `Span`.
-    pub fn look_up_span(&self, span: Span) -> SpanLoc {
+    pub fn look_up_span(&self, span: Span<P>) -> SpanLoc<P> {
         let file = self.find_file(span.low);
         let begin = file.find_line_col(span.low);
         let end = file.find_line_col(span.high);
@@ -190,9 +189,9 @@ impl CodeMap {
 }
 
 /// A `CodeMap`'s record of a source file.
-pub struct File {
+pub struct File<P: Positional> {
     /// The span representing the entire file.
-    pub span: Span,
+    pub span: Span<P>,
 
     /// The filename as it would be displayed in an error message.
     name: String,
@@ -201,10 +200,10 @@ pub struct File {
     source: String,
 
     /// Byte positions of line beginnings.
-    lines: Vec<Pos>,
+    lines: Vec<Pos<P>>,
 }
 
-impl File {
+impl<P: Positional> File<P> {
     /// Gets the name of the file
     pub fn name(&self) -> &str {
         &self.name
@@ -217,7 +216,7 @@ impl File {
     /// # Panics
     ///
     ///  * If `pos` is not within this file's span
-    pub fn find_line(&self, pos: Pos) -> usize {
+    pub fn find_line(&self, pos: Pos<P>) -> usize {
         assert!(pos >= self.span.low);
         assert!(pos <= self.span.high);
         (match self.lines.binary_search(&pos) {
@@ -232,11 +231,11 @@ impl File {
     ///
     /// * If `pos` is not with this file's span
     /// * If `pos` points to a byte in the middle of a UTF-8 character
-    pub fn find_line_col(&self, pos: Pos) -> LineCol {
+    pub fn find_line_col(&self, pos: Pos<P>) -> LineCol {
         let line = self.find_line(pos);
         let line_span = self.line_span(line);
         let byte_col = pos - line_span.low;
-        let col = self.source_slice(line_span)[..byte_col as usize].chars().count();
+        let col = self.source_slice(line_span)[..P::into(byte_col)].chars().count();
 
         LineCol{ line: line, column: col }
     }
@@ -251,9 +250,9 @@ impl File {
     /// # Panics
     ///
     ///   * If `span` is not entirely within this file.
-    pub fn source_slice(&self, span: Span) -> &str {
+    pub fn source_slice(&self, span: Span<P>) -> &str {
         assert!(self.span.contains(span));
-        &self.source[((span.low - self.span.low) as usize)..((span.high - self.span.low) as usize)]
+        &self.source[(P::into(span.low - self.span.low))..(P::into(span.high - self.span.low))]
     }
 
     /// Gets the span representing a line by line number.
@@ -264,7 +263,7 @@ impl File {
     /// # Panics
     ///
     ///  * If the line number is out of range
-    pub fn line_span(&self, line: usize) -> Span {
+    pub fn line_span(&self, line: usize) -> Span<P> {
         assert!(line < self.lines.len());
         Span {
             low: self.lines[line],
@@ -289,22 +288,22 @@ impl File {
     }
 }
 
-impl fmt::Debug for File {
+impl<P: Positional> fmt::Debug for File<P> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "File({:?})", self.name)
     }
 }
 
-impl PartialEq for File {
+impl<P: Positional> PartialEq for File<P> {
     /// Compares by identity
-    fn eq(&self, other: &File) -> bool {
+    fn eq(&self, other: &File<P>) -> bool {
         self as *const _ == other as *const _
     }
 }
 
-impl Eq for File {}
+impl<P: Positional> Eq for File<P> {}
 
-impl Hash for File {
+impl<P: Positional> Hash for File<P> {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         self.span.hash(hasher);
     }
@@ -322,12 +321,12 @@ pub struct LineCol {
 
 /// A file, and a line and column within it.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct Loc {
-    pub file: Arc<File>,
+pub struct Loc<P: Positional> {
+    pub file: Arc<File<P>>,
     pub position: LineCol,
 }
 
-impl fmt::Display for Loc {
+impl<P: Positional> fmt::Display for Loc<P> {
     /// Formats the location as `filename:line:column`, with a 1-indexed
     /// line and column.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -337,13 +336,13 @@ impl fmt::Display for Loc {
 
 /// A file, and a line and column range within it.
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct SpanLoc {
-    pub file: Arc<File>,
+pub struct SpanLoc<P: Positional> {
+    pub file: Arc<File<P>>,
     pub begin: LineCol,
     pub end: LineCol,
 }
 
-impl fmt::Display for SpanLoc {
+impl<P: Positional> fmt::Display for SpanLoc<P> {
     /// Formats the span as `filename:start_line:start_column: end_line:end_column`,
     /// or if the span is zero-length, `filename:line:column`, with a 1-indexed line and column.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {

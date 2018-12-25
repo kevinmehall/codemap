@@ -16,3 +16,9 @@ keywords = ["source", "position", "compiler", "sourcemap", "rustc"]
 
 [badges]
 travis-ci = { repository = "kevinmehall/codemap" }
+
+[features]
+generic = [ "num-traits" ]
+
+[dependencies]
+num-traits = { version = "^0.2", optional = true }

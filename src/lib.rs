@@ -116,10 +116,9 @@ impl<T> Deref for Spanned<T> {
 }
 
 /// A data structure recording source code files for position lookup.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct CodeMap {
     files: Vec<Arc<File>>,
-    _allow_priv: ()
 }
 
 impl CodeMap {

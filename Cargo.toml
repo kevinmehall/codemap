@@ -1,6 +1,6 @@
 [package]
 name = "codemap"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Kevin Mehall <km@kevinmehall.net>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/kevinmehall/codemap"

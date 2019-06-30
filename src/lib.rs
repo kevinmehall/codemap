@@ -149,12 +149,25 @@ impl CodeMap {
         file
     }
 
+    /// Remove the file previously added to this `CodeMap`.
+    ///
+    /// This operation is no-op if file is already removed
+    /// or if file is added to a different `CodeMap`.
+    pub fn remove_file(&mut self, file: &Arc<File>) {
+        // TODO: make faster than linear
+        self.files.retain(|f| !Arc::ptr_eq(f, file));
+    }
+
     fn end_pos(&self) -> Pos {
         self.files.last().map(|x| x.span.high).unwrap_or(Pos(0))
     }
 
     /// Looks up the `File` that contains the specified position.
     pub fn find_file(&self, pos: Pos) -> &Arc<File> {
+        self.find_file_opt(pos).expect("Mapping unknown source location")
+    }
+
+    fn find_file_opt(&self, pos: Pos) -> Option<&Arc<File>> {
         self.files.binary_search_by(|file| {
             if file.span.high < pos {
                 Ordering::Less
@@ -163,7 +176,7 @@ impl CodeMap {
             } else {
                 Ordering::Equal
             }
-        }).ok().map(|i| &self.files[i]).expect("Mapping unknown source location")
+        }).ok().map(|i| &self.files[i])
     }
 
     /// Gets the file, line, and column represented by a `Pos`.
@@ -370,6 +383,23 @@ fn test_codemap() {
     let x = f2.span.subspan(4, 7);
     assert_eq!(codemap.find_file(x.low()).name(), "test2.rs");
     assert_eq!(codemap.find_file(x.high()).name(), "test2.rs");
+}
+
+#[test]
+fn test_remove_file() {
+    let mut codemap = CodeMap::new();
+    let f1 = codemap.add_file("test1.py".to_owned(), "abc".to_owned());
+    let f2 = codemap.add_file("test1.py".to_owned(), "def".to_owned());
+
+    let f2l = f2.span.low;
+
+    codemap.remove_file(&f1);
+
+    assert!(Arc::ptr_eq(&f2, codemap.find_file(f2l)));
+
+    codemap.remove_file(&f2);
+
+    assert!(codemap.find_file_opt(f2l).is_none());
 }
 
 #[test]

@@ -272,7 +272,7 @@ impl File {
     ///
     ///  * If the line number is out of range
     pub fn source_line(&self, line: usize) -> &str {
-        self.source_slice(self.line_span(line)).trim_right_matches(&['\n', '\r'][..])
+        self.source_slice(self.line_span(line)).trim_end_matches(&['\n', '\r'][..])
     }
 
     /// Gets the number of lines in the file

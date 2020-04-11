@@ -62,7 +62,7 @@ impl Span {
     /// # Panics
     ///   * If `end < begin`
     ///   * If `end` is beyond the length of the span
-    pub fn subspan(&self, begin: u64, end: u64) -> Span {
+    pub fn subspan(self, begin: u64, end: u64) -> Span {
         assert!(end >= begin);
         assert!(self.low + end <= self.high);
         Span {
@@ -72,27 +72,27 @@ impl Span {
     }
 
     /// Checks if a span is contained within this span.
-    pub fn contains(&self, other: Span) -> bool {
+    pub fn contains(self, other: Span) -> bool {
         self.low <= other.low && self.high >= other.high
     }
 
     /// The position in the codemap representing the first byte of the span.
-    pub fn low(&self) -> Pos {
+    pub fn low(self) -> Pos {
         self.low
     }
 
     /// The position after the last byte of the span.
-    pub fn high(&self) -> Pos {
+    pub fn high(self) -> Pos {
         self.high
     }
 
     /// The length in bytes of the text of the span
-    pub fn len(&self) -> u64 {
+    pub fn len(self) -> u64 {
         self.high - self.low
     }
 
     /// Create a span that encloses both `self` and `other`.
-    pub fn merge(&self, other: Span) -> Span {
+    pub fn merge(self, other: Span) -> Span {
         Span {
             low: cmp::min(self.low, other.low),
             high: cmp::max(self.high, other.high),

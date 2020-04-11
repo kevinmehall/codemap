@@ -230,10 +230,10 @@ impl File {
     pub fn find_line(&self, pos: Pos) -> usize {
         assert!(pos >= self.span.low);
         assert!(pos <= self.span.high);
-        (match self.lines.binary_search(&pos) {
+        match self.lines.binary_search(&pos) {
             Ok(i) => i,
             Err(i) => i - 1,
-        })
+        }
     }
 
     /// Gets the line and column of a Pos.

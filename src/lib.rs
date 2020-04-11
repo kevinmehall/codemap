@@ -142,13 +142,10 @@ impl CodeMap {
         );
 
         let file = Arc::new(File {
-            span: Span {
-                low: low,
-                high: high,
-            },
-            name: name,
-            source: source,
-            lines: lines,
+            span: Span { low, high },
+            name,
+            source,
+            lines,
         });
 
         self.files.push(file.clone());
@@ -246,14 +243,11 @@ impl File {
         let line = self.find_line(pos);
         let line_span = self.line_span(line);
         let byte_col = pos - line_span.low;
-        let col = self.source_slice(line_span)[..byte_col as usize]
+        let column = self.source_slice(line_span)[..byte_col as usize]
             .chars()
             .count();
 
-        LineCol {
-            line: line,
-            column: col,
-        }
+        LineCol { line, column }
     }
 
     /// Gets the full source text of the file

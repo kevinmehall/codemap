@@ -23,10 +23,10 @@
 //! ```
 
 use std::cmp::{self, Ordering};
-use std::ops::{Add, Sub, Deref};
 use std::fmt;
-use std::sync::Arc;
 use std::hash::{Hash, Hasher};
+use std::ops::{Add, Deref, Sub};
+use std::sync::Arc;
 
 /// A small, `Copy`, value representing a position in a `CodeMap`'s file.
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -146,13 +146,17 @@ impl CodeMap {
         let low = self.end_pos() + 1;
         let high = low + source.len() as u64;
         let mut lines = vec![low];
-        lines.extend(source.match_indices('\n').map(|(p, _)| { low + (p + 1) as u64 }));
+        lines.extend(
+            source
+                .match_indices('\n')
+                .map(|(p, _)| low + (p + 1) as u64),
+        );
 
         let file = Arc::new(File {
-            span: Span { low: low, high: high },
-            name: name,
-            source: source,
-            lines: lines,
+            span: Span { low, high },
+            name,
+            source,
+            lines,
         });
 
         self.files.push(file.clone());
@@ -165,22 +169,29 @@ impl CodeMap {
 
     /// Looks up the `File` that contains the specified position.
     pub fn find_file(&self, pos: Pos) -> &Arc<File> {
-        self.files.binary_search_by(|file| {
-            if file.span.high < pos {
-                Ordering::Less
-            } else if file.span.low > pos {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            }
-        }).ok().map(|i| &self.files[i]).expect("Mapping unknown source location")
+        self.files
+            .binary_search_by(|file| {
+                if file.span.high < pos {
+                    Ordering::Less
+                } else if file.span.low > pos {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            })
+            .ok()
+            .map(|i| &self.files[i])
+            .expect("Mapping unknown source location")
     }
 
     /// Gets the file, line, and column represented by a `Pos`.
     pub fn look_up_pos(&self, pos: Pos) -> Loc {
         let file = self.find_file(pos);
         let position = file.find_line_col(pos);
-        Loc { file: file.clone(), position }
+        Loc {
+            file: file.clone(),
+            position,
+        }
     }
 
     /// Gets the file and its line and column ranges represented by a `Span`.
@@ -188,7 +199,11 @@ impl CodeMap {
         let file = self.find_file(span.low);
         let begin = file.find_line_col(span.low);
         let end = file.find_line_col(span.high);
-        SpanLoc { file: file.clone(), begin, end }
+        SpanLoc {
+            file: file.clone(),
+            begin,
+            end,
+        }
     }
 }
 
@@ -223,10 +238,10 @@ impl File {
     pub fn find_line(&self, pos: Pos) -> usize {
         assert!(pos >= self.span.low);
         assert!(pos <= self.span.high);
-        (match self.lines.binary_search(&pos) {
+        match self.lines.binary_search(&pos) {
             Ok(i) => i,
             Err(i) => i - 1,
-        })
+        }
     }
 
     /// Gets the line and column of a Pos.
@@ -239,9 +254,11 @@ impl File {
         let line = self.find_line(pos);
         let line_span = self.line_span(line);
         let byte_col = pos - line_span.low;
-        let col = self.source_slice(line_span)[..byte_col as usize].chars().count();
+        let column = self.source_slice(line_span)[..byte_col as usize]
+            .chars()
+            .count();
 
-        LineCol{ line: line, column: col }
+        LineCol { line, column }
     }
 
     /// Gets the full source text of the file
@@ -271,7 +288,7 @@ impl File {
         assert!(line < self.lines.len());
         Span {
             low: self.lines[line],
-            high: *self.lines.get(line + 1).unwrap_or(&self.span.high)
+            high: *self.lines.get(line + 1).unwrap_or(&self.span.high),
         }
     }
 
@@ -283,7 +300,8 @@ impl File {
     ///
     ///  * If the line number is out of range
     pub fn source_line(&self, line: usize) -> &str {
-        self.source_slice(self.line_span(line)).trim_end_matches(&['\n', '\r'][..])
+        self.source_slice(self.line_span(line))
+            .trim_end_matches(&['\n', '\r'][..])
     }
 
     /// Gets the number of lines in the file
@@ -334,7 +352,13 @@ impl fmt::Display for Loc {
     /// Formats the location as `filename:line:column`, with a 1-indexed
     /// line and column.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}:{}:{}", self.file.name, self.position.line+1, self.position.column+1)
+        write!(
+            f,
+            "{}:{}:{}",
+            self.file.name,
+            self.position.line + 1,
+            self.position.column + 1
+        )
     }
 }
 
@@ -351,9 +375,23 @@ impl fmt::Display for SpanLoc {
     /// or if the span is zero-length, `filename:line:column`, with a 1-indexed line and column.
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         if self.begin == self.end {
-            write!(f, "{}:{}:{}", self.file.name, self.begin.line+1, self.begin.column+1)
+            write!(
+                f,
+                "{}:{}:{}",
+                self.file.name,
+                self.begin.line + 1,
+                self.begin.column + 1
+            )
         } else {
-            write!(f, "{}:{}:{}: {}:{}", self.file.name, self.begin.line+1, self.begin.column+1, self.end.line+1, self.end.column+1)
+            write!(
+                f,
+                "{}:{}:{}: {}:{}",
+                self.file.name,
+                self.begin.line + 1,
+                self.begin.column + 1,
+                self.end.line + 1,
+                self.end.column + 1
+            )
         }
     }
 }
@@ -372,10 +410,22 @@ fn test_codemap() {
     let x = f1.span.subspan(5, 10);
     let f = codemap.find_file(x.low);
     assert_eq!(f.name, "test1.rs");
-    assert_eq!(f.find_line_col(f.span.low()), LineCol { line: 0, column: 0 });
-    assert_eq!(f.find_line_col(f.span.low() + 4), LineCol { line: 0, column: 4 });
-    assert_eq!(f.find_line_col(f.span.low() + 5), LineCol { line: 1, column: 0 });
-    assert_eq!(f.find_line_col(f.span.low() + 16), LineCol { line: 2, column: 4 });
+    assert_eq!(
+        f.find_line_col(f.span.low()),
+        LineCol { line: 0, column: 0 }
+    );
+    assert_eq!(
+        f.find_line_col(f.span.low() + 4),
+        LineCol { line: 0, column: 4 }
+    );
+    assert_eq!(
+        f.find_line_col(f.span.low() + 5),
+        LineCol { line: 1, column: 0 }
+    );
+    assert_eq!(
+        f.find_line_col(f.span.low() + 16),
+        LineCol { line: 2, column: 4 }
+    );
 
     let x = f2.span.subspan(4, 7);
     assert_eq!(codemap.find_file(x.low()).name(), "test2.rs");
@@ -389,11 +439,14 @@ fn test_issue2() {
     let file = codemap.add_file("<test>".to_owned(), content.to_owned());
 
     let span = file.span.subspan(2, 3);
-    assert_eq!(codemap.look_up_span(span), SpanLoc {
-        file: file.clone(),
-        begin: LineCol { line: 0, column: 2 },
-        end: LineCol { line: 1, column: 0 }
-    });
+    assert_eq!(
+        codemap.look_up_span(span),
+        SpanLoc {
+            file: file.clone(),
+            begin: LineCol { line: 0, column: 2 },
+            end: LineCol { line: 1, column: 0 }
+        }
+    );
 
     assert_eq!(file.source_line(0), "a ");
     assert_eq!(file.source_line(1), "xyz");
@@ -406,7 +459,31 @@ fn test_multibyte() {
     let content = "65°00′N 18°00′W 汉语\n🔬";
     let file = codemap.add_file("<test>".to_owned(), content.to_owned());
 
-    assert_eq!(codemap.look_up_pos(file.span.low() + 21), Loc { file: file.clone(), position: LineCol { line: 0, column: 15 } });
-    assert_eq!(codemap.look_up_pos(file.span.low() + 28), Loc { file: file.clone(), position: LineCol { line: 0, column: 18 } });
-    assert_eq!(codemap.look_up_pos(file.span.low() + 33), Loc { file: file.clone(), position: LineCol { line: 1, column: 1 } });
+    assert_eq!(
+        codemap.look_up_pos(file.span.low() + 21),
+        Loc {
+            file: file.clone(),
+            position: LineCol {
+                line: 0,
+                column: 15
+            }
+        }
+    );
+    assert_eq!(
+        codemap.look_up_pos(file.span.low() + 28),
+        Loc {
+            file: file.clone(),
+            position: LineCol {
+                line: 0,
+                column: 18
+            }
+        }
+    );
+    assert_eq!(
+        codemap.look_up_pos(file.span.low() + 33),
+        Loc {
+            file: file.clone(),
+            position: LineCol { line: 1, column: 1 }
+        }
+    );
 }

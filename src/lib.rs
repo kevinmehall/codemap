@@ -30,6 +30,7 @@ use std::sync::Arc;
 
 /// A small, `Copy`, value representing a position in a `CodeMap`'s file.
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[repr(C)]
 pub struct Pos(u32);
 
 impl Add<u64> for Pos {
@@ -48,6 +49,7 @@ impl Sub<Pos> for Pos {
 
 /// A range of text within a CodeMap.
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
+#[repr(C)]
 pub struct Span {
     /// The position in the codemap representing the first byte of the span.
     low: Pos,
@@ -62,7 +64,8 @@ impl Span {
     /// # Panics
     ///   * If `end < begin`
     ///   * If `end` is beyond the length of the span
-    pub fn subspan(&self, begin: u64, end: u64) -> Span {
+    #[no_mangle]
+    pub extern "C" fn subspan(&self, begin: u64, end: u64) -> Span {
         assert!(end >= begin);
         assert!(self.low + end <= self.high);
         Span {
@@ -72,27 +75,32 @@ impl Span {
     }
 
     /// Checks if a span is contained within this span.
-    pub fn contains(&self, other: Span) -> bool {
+    #[no_mangle]
+    pub extern "C" fn contains(&self, other: Span) -> bool {
         self.low <= other.low && self.high >= other.high
     }
 
     /// The position in the codemap representing the first byte of the span.
-    pub fn low(&self) -> Pos {
+    #[no_mangle]
+    pub extern "C" fn low(&self) -> Pos {
         self.low
     }
 
     /// The position after the last byte of the span.
-    pub fn high(&self) -> Pos {
+    #[no_mangle]
+    pub extern "C" fn high(&self) -> Pos {
         self.high
     }
 
     /// The length in bytes of the text of the span
-    pub fn len(&self) -> u64 {
+    #[no_mangle]
+    pub extern "C" fn len(&self) -> u64 {
         self.high - self.low
     }
 
     /// Create a span that encloses both `self` and `other`.
-    pub fn merge(&self, other: Span) -> Span {
+    #[no_mangle]
+    pub extern "C" fn merge(&self, other: Span) -> Span {
         Span {
             low: cmp::min(self.low, other.low),
             high: cmp::max(self.high, other.high),
@@ -102,6 +110,7 @@ impl Span {
 
 /// Associate a Span with a value of arbitrary type (e.g. an AST node).
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Copy)]
+#[repr(C)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
@@ -110,7 +119,8 @@ pub struct Spanned<T> {
 impl<T> Spanned<T> {
     /// Maps a `Spanned<T>` to `Spanned<U>` by applying the function to the node,
     /// leaving the span untouched.
-    pub fn map_node<U, F: FnOnce(T) -> U>(self, op: F) -> Spanned<U> {
+    #[no_mangle]
+    pub extern "C" fn map_node<U, F: FnOnce(T) -> U>(self, op: F) -> Spanned<U> {
         Spanned {
             node: op(self.node),
             span: self.span
@@ -128,13 +138,15 @@ impl<T> Deref for Spanned<T> {
 
 /// A data structure recording source code files for position lookup.
 #[derive(Default, Debug)]
+#[repr(C)]
 pub struct CodeMap {
     files: Vec<Arc<File>>,
 }
 
 impl CodeMap {
     /// Creates an empty `CodeMap`.
-    pub fn new() -> CodeMap {
+    #[no_mangle]
+    pub extern "C" fn new() -> CodeMap {
         Default::default()
     }
 
@@ -142,7 +154,8 @@ impl CodeMap {
     ///
     /// Use the returned `File` and its `.span` property to create `Spans`
     /// representing substrings of the file.
-    pub fn add_file(&mut self, name: String, source: String) -> Arc<File> {
+    #[no_mangle]
+    pub extern "C" fn add_file(&mut self, name: String, source: String) -> Arc<File> {
         let low = self.end_pos() + 1;
         let high = low + source.len() as u64;
         let mut lines = vec![low];
@@ -168,7 +181,8 @@ impl CodeMap {
     }
 
     /// Looks up the `File` that contains the specified position.
-    pub fn find_file(&self, pos: Pos) -> &Arc<File> {
+    #[no_mangle]
+    pub extern "C" fn find_file(&self, pos: Pos) -> &Arc<File> {
         self.files
             .binary_search_by(|file| {
                 if file.span.high < pos {
@@ -185,7 +199,8 @@ impl CodeMap {
     }
 
     /// Gets the file, line, and column represented by a `Pos`.
-    pub fn look_up_pos(&self, pos: Pos) -> Loc {
+    #[no_mangle]
+    pub extern "C" fn look_up_pos(&self, pos: Pos) -> Loc {
         let file = self.find_file(pos);
         let position = file.find_line_col(pos);
         Loc {
@@ -195,7 +210,8 @@ impl CodeMap {
     }
 
     /// Gets the file and its line and column ranges represented by a `Span`.
-    pub fn look_up_span(&self, span: Span) -> SpanLoc {
+    #[no_mangle]
+    pub extern "C" fn look_up_span(&self, span: Span) -> SpanLoc {
         let file = self.find_file(span.low);
         let begin = file.find_line_col(span.low);
         let end = file.find_line_col(span.high);
@@ -208,6 +224,7 @@ impl CodeMap {
 }
 
 /// A `CodeMap`'s record of a source file.
+#[repr(C)]
 pub struct File {
     /// The span representing the entire file.
     pub span: Span,
@@ -224,7 +241,8 @@ pub struct File {
 
 impl File {
     /// Gets the name of the file
-    pub fn name(&self) -> &str {
+    #[no_mangle]
+    pub extern "C" fn name(&self) -> &str {
         &self.name
     }
 
@@ -235,7 +253,8 @@ impl File {
     /// # Panics
     ///
     ///  * If `pos` is not within this file's span
-    pub fn find_line(&self, pos: Pos) -> usize {
+    #[no_mangle]
+    pub extern "C" fn find_line(&self, pos: Pos) -> usize {
         assert!(pos >= self.span.low);
         assert!(pos <= self.span.high);
         match self.lines.binary_search(&pos) {
@@ -250,7 +269,8 @@ impl File {
     ///
     /// * If `pos` is not with this file's span
     /// * If `pos` points to a byte in the middle of a UTF-8 character
-    pub fn find_line_col(&self, pos: Pos) -> LineCol {
+    #[no_mangle]
+    pub extern "C" fn find_line_col(&self, pos: Pos) -> LineCol {
         let line = self.find_line(pos);
         let line_span = self.line_span(line);
         let byte_col = pos - line_span.low;
@@ -262,7 +282,8 @@ impl File {
     }
 
     /// Gets the full source text of the file
-    pub fn source(&self) -> &str {
+    #[no_mangle]
+    pub extern "C" fn source(&self) -> &str {
         &self.source
     }
 
@@ -271,7 +292,8 @@ impl File {
     /// # Panics
     ///
     ///   * If `span` is not entirely within this file.
-    pub fn source_slice(&self, span: Span) -> &str {
+    #[no_mangle]
+    pub extern "C" fn source_slice(&self, span: Span) -> &str {
         assert!(self.span.contains(span));
         &self.source[((span.low - self.span.low) as usize)..((span.high - self.span.low) as usize)]
     }
@@ -284,7 +306,8 @@ impl File {
     /// # Panics
     ///
     ///  * If the line number is out of range
-    pub fn line_span(&self, line: usize) -> Span {
+    #[no_mangle]
+    pub extern "C" fn line_span(&self, line: usize) -> Span {
         assert!(line < self.lines.len());
         Span {
             low: self.lines[line],
@@ -299,13 +322,15 @@ impl File {
     /// # Panics
     ///
     ///  * If the line number is out of range
-    pub fn source_line(&self, line: usize) -> &str {
+    #[no_mangle]
+    pub extern "C" fn source_line(&self, line: usize) -> &str {
         self.source_slice(self.line_span(line))
             .trim_end_matches(&['\n', '\r'][..])
     }
 
     /// Gets the number of lines in the file
-    pub fn num_lines(&self) -> usize {
+    #[no_mangle]
+    pub extern "C" fn num_lines(&self) -> usize {
         self.lines.len()
     }
 }
@@ -333,6 +358,7 @@ impl Hash for File {
 
 /// A line and column.
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
+#[repr(C)]
 pub struct LineCol {
     /// The line number within the file (0-indexed).
     pub line: usize,
@@ -343,6 +369,7 @@ pub struct LineCol {
 
 /// A file, and a line and column within it.
 #[derive(Clone, Eq, PartialEq, Debug)]
+#[repr(C)]
 pub struct Loc {
     pub file: Arc<File>,
     pub position: LineCol,
@@ -364,6 +391,7 @@ impl fmt::Display for Loc {
 
 /// A file, and a line and column range within it.
 #[derive(Clone, Eq, PartialEq, Debug)]
+#[repr(C)]
 pub struct SpanLoc {
     pub file: Arc<File>,
     pub begin: LineCol,
